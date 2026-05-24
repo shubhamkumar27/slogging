@@ -101,10 +101,25 @@ async function renderResult() {
         <ul>${gap_questions.map((q) => `<li>${esc(q)}</li>`).join("")}</ul>
       </div>
     ` : ""}
-    <div id="preview" style="background:#fff;padding:1rem;border-radius:8px;border:1px solid #ddd">
+    <div id="preview" contenteditable="true" spellcheck="true" style="background:#fff;padding:1rem;border-radius:8px;border:1px solid #ddd">
       ${renderResume(tailored_resume)}
     </div>
+    <div class="row" style="margin-top:0.75rem">
+      <button id="dlpdf">Download PDF</button>
+    </div>
   `;
+  document.getElementById("dlpdf").addEventListener("click", () => {
+    const el = document.getElementById("preview");
+    const name = (lastResult.tailored_resume?.contact?.name || "resume").replace(/\s+/g, "_");
+    // eslint-disable-next-line no-undef
+    html2pdf().set({
+      margin: 12,
+      filename: `${name}_tailored.pdf`,
+      image: { type: "jpeg", quality: 0.95 },
+      html2canvas: { scale: 2 },
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+    }).from(el).save();
+  });
 }
 
 route("/", renderHome);
