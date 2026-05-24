@@ -1,5 +1,6 @@
 import { api, getPasscode, setPasscode, clearPasscode } from "./api.js";
 import { route, go, start } from "./router.js";
+import { extractPdfText } from "./pdf.js";
 
 const app = document.getElementById("app");
 const html = (s, ...v) => s.reduce((a, x, i) => a + x + (v[i] ?? ""), "");
@@ -122,18 +123,39 @@ async function renderOnboarding() {
   if (!await ensureAuthed()) return;
   app.innerHTML = html`
     <h1>Set up your base resume</h1>
-    <p>Paste your current resume as plain text. We'll structure it for you. You'll be able to review and edit before saving.</p>
-    <textarea id="raw" placeholder="Paste resume text…"></textarea>
+    <p>Upload your resume PDF, or paste it as text. We'll structure it for you, and you'll be able to review and edit before saving.</p>
+    <div class="row" style="margin-bottom:0.75rem">
+      <label class="secondary" style="padding:0.6rem 1rem;border:1px solid #1a1a1a;border-radius:6px;cursor:pointer;background:#fff;color:#1a1a1a">
+        Upload PDF
+        <input type="file" id="pdf" accept="application/pdf" style="display:none">
+      </label>
+    </div>
+    <textarea id="raw" placeholder="…or paste resume text here"></textarea>
     <div class="row" style="margin-top:0.75rem">
       <button id="parse">Parse</button>
     </div>
     <div id="status"></div>
   `;
+
+  document.getElementById("pdf").addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const status = document.getElementById("status");
+    status.innerHTML = `<p>Reading PDF…</p>`;
+    try {
+      const text = await extractPdfText(file);
+      document.getElementById("raw").value = text;
+      status.innerHTML = `<p>Extracted ${text.length} characters. Review the text, then click Parse.</p>`;
+    } catch (err) {
+      status.innerHTML = `<p class="error">Couldn't read that PDF: ${esc(err.message)}. Try pasting as text instead.</p>`;
+    }
+  });
+
   document.getElementById("parse").addEventListener("click", async () => {
     const raw = document.getElementById("raw").value.trim();
     const status = document.getElementById("status");
-    if (!raw) { status.innerHTML = `<p class="error">Paste something first.</p>`; return; }
-    status.innerHTML = `<p>Parsing…</p>`;
+    if (!raw) { status.innerHTML = `<p class="error">Upload a PDF or paste text first.</p>`; return; }
+    status.innerHTML = `<p>Parsing… this may take 10–30s.</p>`;
     try {
       const { parsed } = await api.parseResume(raw);
       baseCache = parsed;
