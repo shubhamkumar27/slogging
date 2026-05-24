@@ -2,6 +2,7 @@ import { resolveUser } from "./auth.js";
 import { getBase, putBase, deleteBase } from "./handlers/resume.js";
 import { generate } from "./handlers/generate.js";
 import { listHistory, getHistoryEntry } from "./handlers/history.js";
+import { parseResume } from "./handlers/parse.js";
 
 const ALLOWED_ORIGINS = new Set([
   "https://shubhamkumar27.github.io",
@@ -101,6 +102,21 @@ export default {
       const entry = await getHistoryEntry(env.SNAGGR_KV, user, decodeURIComponent(histMatch[1]));
       if (!entry) return json({ error: "not_found" }, 404, origin);
       return json(entry, 200, origin);
+    }
+
+    if (url.pathname === "/resume/parse" && request.method === "POST") {
+      const user = authed(request, env);
+      if (!user) return json({ error: "unauthorized" }, 401, origin);
+      let body;
+      try { body = await request.json(); } catch { return json({ error: "bad_json" }, 400, origin); }
+      const raw = (body?.raw_text || "").trim();
+      if (!raw) return json({ error: "missing_text" }, 400, origin);
+      try {
+        const parsed = await parseResume(env, raw);
+        return json({ parsed }, 200, origin);
+      } catch (e) {
+        return json({ error: String(e.message || e) }, 502, origin);
+      }
     }
 
     return json({ error: "not_found" }, 404, origin);
