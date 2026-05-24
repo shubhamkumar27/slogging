@@ -1,5 +1,7 @@
 import { resolveUser } from "./auth.js";
 import { getBase, putBase, deleteBase } from "./handlers/resume.js";
+import { generate } from "./handlers/generate.js";
+import { listHistory, getHistoryEntry } from "./handlers/history.js";
 
 const ALLOWED_ORIGINS = new Set([
   "https://shubhamkumar27.github.io",
@@ -65,6 +67,40 @@ export default {
         await deleteBase(env.SNAGGR_KV, user);
         return json({ ok: true }, 200, origin);
       }
+    }
+
+    if (url.pathname === "/generate" && request.method === "POST") {
+      const user = authed(request, env);
+      if (!user) return json({ error: "unauthorized" }, 401, origin);
+      let body;
+      try { body = await request.json(); } catch { return json({ error: "bad_json" }, 400, origin); }
+      const jd = (body?.job_description || "").trim();
+      if (!jd) return json({ error: "missing_jd" }, 400, origin);
+      try {
+        const result = await generate(env, user, jd);
+        return json(result, 200, origin);
+      } catch (e) {
+        const msg = String(e.message || e);
+        if (msg === "no_base_resume") return json({ error: msg }, 409, origin);
+        if (msg === "bad_ai_output") return json({ error: msg }, 502, origin);
+        if (msg.startsWith("minimax_")) return json({ error: msg }, 502, origin);
+        return json({ error: "internal" }, 500, origin);
+      }
+    }
+
+    if (url.pathname === "/history" && request.method === "GET") {
+      const user = authed(request, env);
+      if (!user) return json({ error: "unauthorized" }, 401, origin);
+      return json({ items: await listHistory(env.SNAGGR_KV, user) }, 200, origin);
+    }
+
+    const histMatch = url.pathname.match(/^\/history\/(.+)$/);
+    if (histMatch && request.method === "GET") {
+      const user = authed(request, env);
+      if (!user) return json({ error: "unauthorized" }, 401, origin);
+      const entry = await getHistoryEntry(env.SNAGGR_KV, user, decodeURIComponent(histMatch[1]));
+      if (!entry) return json({ error: "not_found" }, 404, origin);
+      return json(entry, 200, origin);
     }
 
     return json({ error: "not_found" }, 404, origin);
