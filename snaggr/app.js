@@ -6,6 +6,7 @@ const html = (s, ...v) => s.reduce((a, x, i) => a + x + (v[i] ?? ""), "");
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
 
 let lastResult = null;
+let baseCache = null;
 
 function renderLogin(err = "") {
   app.innerHTML = html`
@@ -33,13 +34,8 @@ async function renderHome() {
   if (!await ensureAuthed()) return;
   app.innerHTML = `<h1>snaggr</h1><p>Loading…</p>`;
   const { base } = await api.getBase();
-  if (!base) {
-    app.innerHTML = html`
-      <h1>snaggr</h1>
-      <p>No base resume on file. Onboarding view coming in the next task. For now seed one with curl.</p>
-    `;
-    return;
-  }
+  if (!base) { go("/onboarding"); return; }
+  baseCache = base;
   app.innerHTML = html`
     <h1>snaggr</h1>
     <p>Hi ${esc(base.contact?.name || "")}. Paste a job description.</p>
@@ -122,6 +118,69 @@ async function renderResult() {
   });
 }
 
+async function renderOnboarding() {
+  if (!await ensureAuthed()) return;
+  app.innerHTML = html`
+    <h1>Set up your base resume</h1>
+    <p>Paste your current resume as plain text. We'll structure it for you. You'll be able to review and edit before saving.</p>
+    <textarea id="raw" placeholder="Paste resume text…"></textarea>
+    <div class="row" style="margin-top:0.75rem">
+      <button id="parse">Parse</button>
+    </div>
+    <div id="status"></div>
+  `;
+  document.getElementById("parse").addEventListener("click", async () => {
+    const raw = document.getElementById("raw").value.trim();
+    const status = document.getElementById("status");
+    if (!raw) { status.innerHTML = `<p class="error">Paste something first.</p>`; return; }
+    status.innerHTML = `<p>Parsing…</p>`;
+    try {
+      const { parsed } = await api.parseResume(raw);
+      baseCache = parsed;
+      go("/base");
+    } catch (e) {
+      status.innerHTML = `<p class="error">Failed: ${esc(e.message)}</p>`;
+    }
+  });
+}
+
+async function renderBase() {
+  if (!await ensureAuthed()) return;
+  if (!baseCache) {
+    const { base } = await api.getBase();
+    if (!base) return go("/onboarding");
+    baseCache = base;
+  }
+  app.innerHTML = html`
+    <h1>Base resume</h1>
+    <a href="#/">← Back</a>
+    <p>Edit the JSON if anything is off, then save. Or reset to re-onboard.</p>
+    <textarea id="json" style="min-height:400px;font-family:ui-monospace,monospace">${esc(JSON.stringify(baseCache, null, 2))}</textarea>
+    <div class="row" style="margin-top:0.75rem">
+      <button id="save">Save</button>
+      <button id="reset" class="secondary">Reset base resume</button>
+    </div>
+    <div id="status"></div>
+  `;
+  document.getElementById("save").addEventListener("click", async () => {
+    const status = document.getElementById("status");
+    let parsed;
+    try { parsed = JSON.parse(document.getElementById("json").value); }
+    catch (e) { status.innerHTML = `<p class="error">Invalid JSON: ${esc(e.message)}</p>`; return; }
+    await api.putBase(parsed);
+    baseCache = parsed;
+    status.innerHTML = `<p>Saved.</p>`;
+  });
+  document.getElementById("reset").addEventListener("click", async () => {
+    if (!confirm("Delete the saved base resume and start over?")) return;
+    await api.deleteBase();
+    baseCache = null;
+    go("/onboarding");
+  });
+}
+
 route("/", renderHome);
+route("/onboarding", renderOnboarding);
+route("/base", renderBase);
 route("/result", renderResult);
 start();
