@@ -1,0 +1,8 @@
+name = "snaggr"
+main = "src/worker.js"
+compatibility_date = "2026-05-01"
+
+# KV namespace bound as SNAGGR_KV. We'll create it in Task 3 and paste the id here.
+# [[kv_namespaces]]
+# binding = "SNAGGR_KV"
+# id = "PASTE_AFTER_CREATING"
