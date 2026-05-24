@@ -106,16 +106,27 @@ async function renderResult() {
     </div>
   `;
   document.getElementById("dlpdf").addEventListener("click", () => {
-    const el = document.getElementById("preview");
     const name = (lastResult.tailored_resume?.contact?.name || "resume").replace(/\s+/g, "_");
-    // eslint-disable-next-line no-undef
-    html2pdf().set({
-      margin: 12,
-      filename: `${name}_tailored.pdf`,
-      image: { type: "jpeg", quality: 0.95 },
-      html2canvas: { scale: 2 },
-      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-    }).from(el).save();
+    const previewHTML = document.getElementById("preview").innerHTML;
+    const w = window.open("", "_blank");
+    if (!w) { alert("Pop-up blocked. Allow pop-ups for this site to download the PDF."); return; }
+    w.document.write(`<!doctype html><html><head><title>${name}_tailored</title>
+      <meta charset="utf-8">
+      <style>
+        @page { size: A4; margin: 14mm; }
+        body { font-family: -apple-system, system-ui, sans-serif; color: #1a1a1a; line-height: 1.45; max-width: 720px; margin: 0 auto; padding: 14mm; }
+        h2 { margin: 0 0 0.25rem; font-size: 1.6rem; }
+        h3 { margin: 1.1rem 0 0.4rem; font-size: 1.05rem; border-bottom: 1px solid #ddd; padding-bottom: 0.2rem; }
+        p { margin: 0.25rem 0; }
+        ul { margin: 0.3rem 0 0.5rem 1.2rem; padding: 0; }
+        li { margin: 0.15rem 0; }
+        strong { font-weight: 600; }
+        @media print { body { padding: 0; max-width: none; } }
+      </style></head>
+      <body>${previewHTML}
+      <script>window.onload = () => { window.focus(); window.print(); };</script>
+      </body></html>`);
+    w.document.close();
   });
 }
 
