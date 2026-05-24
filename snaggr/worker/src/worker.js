@@ -1,4 +1,5 @@
 import { resolveUser } from "./auth.js";
+import { getBase, putBase, deleteBase } from "./handlers/resume.js";
 
 const ALLOWED_ORIGINS = new Set([
   "https://shubhamkumar27.github.io",
@@ -43,6 +44,27 @@ export default {
       const user = authed(request, env);
       if (!user) return json({ error: "unauthorized" }, 401, origin);
       return json({ user }, 200, origin);
+    }
+
+    if (url.pathname === "/resume/base") {
+      const user = authed(request, env);
+      if (!user) return json({ error: "unauthorized" }, 401, origin);
+
+      if (request.method === "GET") {
+        const base = await getBase(env.SNAGGR_KV, user);
+        return json({ base }, 200, origin);
+      }
+      if (request.method === "PUT") {
+        let body;
+        try { body = await request.json(); } catch { return json({ error: "bad_json" }, 400, origin); }
+        if (!body || typeof body !== "object") return json({ error: "bad_body" }, 400, origin);
+        await putBase(env.SNAGGR_KV, user, body);
+        return json({ ok: true }, 200, origin);
+      }
+      if (request.method === "DELETE") {
+        await deleteBase(env.SNAGGR_KV, user);
+        return json({ ok: true }, 200, origin);
+      }
     }
 
     return json({ error: "not_found" }, 404, origin);
