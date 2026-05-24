@@ -1,5 +1,5 @@
 const ENDPOINT = "https://api.minimax.io/v1/text/chatcompletion_v2";
-const MODEL = "MiniMax-Text-01";
+const MODEL = "MiniMax-M2.7";
 
 // MiniMax (and most LLMs without strict JSON mode) may wrap output in
 // ```json ... ``` fences, or include leading prose. Tolerate that.
