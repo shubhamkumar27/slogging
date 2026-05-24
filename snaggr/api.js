@@ -27,4 +27,7 @@ export const api = {
   getBase: () => call("GET", "/resume/base"),
   putBase: (resume) => call("PUT", "/resume/base", resume),
   deleteBase: () => call("DELETE", "/resume/base"),
+  generate: (job_description) => call("POST", "/generate", { job_description }),
+  listHistory: () => call("GET", "/history"),
+  getHistory: (id) => call("GET", `/history/${encodeURIComponent(id)}`),
 };
