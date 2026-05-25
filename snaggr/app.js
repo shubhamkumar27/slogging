@@ -152,7 +152,6 @@ async function renderResult() {
             background: #fff !important;
             page-break-after: always;
             break-after: page;
-            overflow: hidden;
           }
           section.docx:last-child { page-break-after: auto; break-after: auto; }
           @media print {
@@ -189,8 +188,10 @@ async function renderResult() {
         ignoreHeight: false,
         ignoreFonts: false,
         breakPages: true,
-        experimental: false,
+        experimental: true,
         useBase64URL: true,
+        renderHeaders: true,
+        renderFooters: true,
       });
       status.innerHTML = `<p>Opened print preview.</p>`;
       setTimeout(() => { w.focus(); w.print(); }, 400);
