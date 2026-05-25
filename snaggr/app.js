@@ -99,8 +99,8 @@ async function renderResult() {
     <div id="cards" style="margin-top:0.75rem">${cards}</div>
     <div class="row" style="margin-top:0.75rem">
       <button id="dldocx">Download Word</button>
-      <button id="dlpdf" class="secondary">Download PDF</button>
     </div>
+    <p style="font-size:0.85rem;color:#666;margin-top:0.5rem">Tip: open the downloaded .docx in Word and File → Save as PDF for the best-looking PDF.</p>
     <div id="status"></div>
   `;
   const collectEdits = () => Array.from(document.querySelectorAll("#cards .card")).map((el) => ({
@@ -123,83 +123,6 @@ async function renderResult() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       status.innerHTML = `<p>Downloaded.</p>`;
-    } catch (err) {
-      status.innerHTML = `<p class="error">Failed: ${esc(err.message)}</p>`;
-    }
-  });
-  document.getElementById("dlpdf").addEventListener("click", async () => {
-    const status = document.getElementById("status");
-    const edits = collectEdits();
-    try {
-      status.innerHTML = `<p>Building PDF preview…</p>`;
-      const blob = await buildTailoredDocx(edits);
-      const name = (baseCache?.contact?.name || "resume").replace(/\s+/g, "_");
-
-      const w = window.open("", "_blank");
-      if (!w) { alert("Pop-up blocked. Allow pop-ups for this site to print to PDF."); return; }
-      w.document.write(`<!doctype html><html><head>
-        <meta charset="utf-8">
-        <title>${name}_tailored</title>
-        <style>
-          html, body { margin: 0; padding: 0; background: #fff; }
-          @page { size: A4; margin: 0; }
-          /* docx-preview creates <section class="docx"> inside .docx-wrapper.
-             It sets inline width/minHeight to A4 dimensions. Force one printed page per section. */
-          .docx-wrapper { background: #fff !important; padding: 0 !important; box-shadow: none !important; }
-          section.docx {
-            box-shadow: none !important;
-            margin: 0 auto !important;
-            background: #fff !important;
-            page-break-after: always;
-            break-after: page;
-          }
-          section.docx:last-child { page-break-after: auto; break-after: auto; }
-          /* Don't split a single paragraph / list item across pages. */
-          section.docx p, section.docx li, section.docx tr {
-            page-break-inside: avoid;
-            break-inside: avoid;
-          }
-          @media print {
-            html, body, .docx-wrapper { background: #fff !important; }
-            .docx-wrapper { padding: 0 !important; box-shadow: none !important; }
-            section.docx {
-              box-shadow: none !important;
-              margin: 0 !important;
-              page-break-after: always;
-              break-after: page;
-              /* Let docx-preview's inline width/minHeight (matched to A4) own sizing. */
-            }
-            section.docx:last-child { page-break-after: auto; break-after: auto; }
-            /* Hide anything outside the docx-wrapper (e.g. accidental Safari toolbars). */
-            body > *:not(#container) { display: none !important; }
-          }
-        </style>
-      </head><body>
-        <div id="container"></div>
-      </body></html>`);
-      w.document.close();
-
-      const docxLib = window.docx;
-      if (!docxLib || typeof docxLib.renderAsync !== "function") {
-        status.innerHTML = `<p class="error">docx-preview not loaded.</p>`;
-        w.close();
-        return;
-      }
-      const container = w.document.getElementById("container");
-      await docxLib.renderAsync(blob, container, undefined, {
-        className: "docx",
-        inWrapper: true,
-        ignoreWidth: false,
-        ignoreHeight: false,
-        ignoreFonts: false,
-        breakPages: true,
-        experimental: true,
-        useBase64URL: true,
-        renderHeaders: true,
-        renderFooters: true,
-      });
-      status.innerHTML = `<p>Opened print preview.</p>`;
-      setTimeout(() => { w.focus(); w.print(); }, 400);
     } catch (err) {
       status.innerHTML = `<p class="error">Failed: ${esc(err.message)}</p>`;
     }
