@@ -82,7 +82,11 @@ function rewriteParagraphText(pXml, newText) {
   let firstRunXml = firstRun.xml;
   const tRe = /<w:t(\s[^>]*)?>([^<]*)<\/w:t>/;
   if (tRe.test(firstRunXml)) {
-    firstRunXml = firstRunXml.replace(tRe, (_, attrs) => `<w:t xml:space="preserve"${attrs || ""}>${encodeXml(newText)}</w:t>`);
+    firstRunXml = firstRunXml.replace(tRe, (_, attrs) => {
+      // Strip any pre-existing xml:space attribute to avoid duplicating it.
+      const cleaned = (attrs || "").replace(/\s+xml:space="[^"]*"/g, "");
+      return `<w:t${cleaned} xml:space="preserve">${encodeXml(newText)}</w:t>`;
+    });
   } else {
     firstRunXml = firstRunXml.replace(/<\/w:r>$/, `<w:t xml:space="preserve">${encodeXml(newText)}</w:t></w:r>`);
   }
