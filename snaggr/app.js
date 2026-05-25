@@ -11,6 +11,14 @@ let baseCache = null;
 let templateBytesB64 = null;
 let pendingParagraphs = null;
 
+async function buildTailoredDocx(edits) {
+  if (!templateBytesB64) {
+    const { docx_b64 } = await api.getTemplate();
+    templateBytesB64 = docx_b64;
+  }
+  return await spliceDocx(templateBytesB64, edits);
+}
+
 function renderLogin(err = "") {
   app.innerHTML = html`
     <h1>snaggr</h1>
@@ -91,23 +99,20 @@ async function renderResult() {
     <div id="cards" style="margin-top:0.75rem">${cards}</div>
     <div class="row" style="margin-top:0.75rem">
       <button id="dldocx">Download Word</button>
+      <button id="dlpdf" class="secondary">Download PDF</button>
     </div>
     <div id="status"></div>
   `;
+  const collectEdits = () => Array.from(document.querySelectorAll("#cards .card")).map((el) => ({
+    id: Number(el.dataset.pid),
+    text: el.querySelector(".card-text").innerText.trim(),
+  }));
   document.getElementById("dldocx").addEventListener("click", async () => {
     const status = document.getElementById("status");
-    const edits = Array.from(document.querySelectorAll("#cards .card")).map((el) => ({
-      id: Number(el.dataset.pid),
-      text: el.querySelector(".card-text").innerText.trim(),
-    }));
+    const edits = collectEdits();
     try {
-      if (!templateBytesB64) {
-        status.innerHTML = `<p>Loading template…</p>`;
-        const { docx_b64 } = await api.getTemplate();
-        templateBytesB64 = docx_b64;
-      }
       status.innerHTML = `<p>Building Word file…</p>`;
-      const blob = await spliceDocx(templateBytesB64, edits);
+      const blob = await buildTailoredDocx(edits);
       const name = (baseCache?.contact?.name || "resume").replace(/\s+/g, "_");
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -118,6 +123,51 @@ async function renderResult() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       status.innerHTML = `<p>Downloaded.</p>`;
+    } catch (err) {
+      status.innerHTML = `<p class="error">Failed: ${esc(err.message)}</p>`;
+    }
+  });
+  document.getElementById("dlpdf").addEventListener("click", async () => {
+    const status = document.getElementById("status");
+    const edits = collectEdits();
+    try {
+      status.innerHTML = `<p>Building PDF preview…</p>`;
+      const blob = await buildTailoredDocx(edits);
+      const name = (baseCache?.contact?.name || "resume").replace(/\s+/g, "_");
+
+      const w = window.open("", "_blank");
+      if (!w) { alert("Pop-up blocked. Allow pop-ups for this site to print to PDF."); return; }
+      w.document.write(`<!doctype html><html><head>
+        <meta charset="utf-8">
+        <title>${name}_tailored</title>
+        <style>
+          body { margin: 0; }
+          @page { size: A4; margin: 0; }
+        </style>
+      </head><body>
+        <div id="container"></div>
+      </body></html>`);
+      w.document.close();
+
+      const docxLib = window.docx;
+      if (!docxLib || typeof docxLib.renderAsync !== "function") {
+        status.innerHTML = `<p class="error">docx-preview not loaded.</p>`;
+        w.close();
+        return;
+      }
+      const container = w.document.getElementById("container");
+      await docxLib.renderAsync(blob, container, undefined, {
+        className: "docx",
+        inWrapper: true,
+        ignoreWidth: false,
+        ignoreHeight: false,
+        ignoreFonts: false,
+        breakPages: true,
+        experimental: false,
+        useBase64URL: true,
+      });
+      status.innerHTML = `<p>Opened print preview.</p>`;
+      setTimeout(() => { w.focus(); w.print(); }, 400);
     } catch (err) {
       status.innerHTML = `<p class="error">Failed: ${esc(err.message)}</p>`;
     }
