@@ -2,14 +2,18 @@ import { chatJson } from "../minimax.js";
 import { getBase } from "./resume.js";
 import { historyKey } from "../kv.js";
 
-const SYSTEM = `You are a resume tailoring assistant. The user will give you a base resume (JSON) and a job description (text). Your job:
+const SYSTEM = `You are a resume tailoring assistant. The user will give you:
+- A structured resume (JSON with paragraph_id references into a Word template).
+- A job description.
 
-1. Return a tailored version of the resume, in the SAME JSON schema, optimized for the JD: reorder bullets, rephrase to use the JD's vocabulary (for ATS), and tighten the summary. NEVER invent jobs, employers, dates, certifications, or skills the candidate did not claim. You may rephrase but not fabricate.
-2. List in "gap_questions" any concrete requirements from the JD that are NOT reflected in the base resume — phrased as questions to the candidate (e.g., "The JD asks for Kubernetes. Do you have hands-on experience? If yes, where should we add it?").
+Your job:
+1. Output "tailored" — an array of { paragraph_id, text } updates. Include one entry for EVERY editable paragraph_id present in the structured resume (summary, every experience bullet, skills line). DO NOT include static label paragraph_ids.
+2. Tailor text to optimize for the JD: reorder/rephrase bullets to match the JD vocabulary, tighten the summary, surface relevant skills. NEVER invent jobs, employers, dates, or skills the candidate did not claim.
+3. Output "gap_questions" — JD requirements not reflected in the resume, phrased as questions.
 
 Output strict JSON:
 {
-  "tailored_resume": { ...same schema as the input resume... },
+  "tailored": [{ "paragraph_id": 0, "text": "" }, ...],
   "gap_questions": ["..."]
 }
 
@@ -27,13 +31,13 @@ export async function generate(env, user, jobDescription) {
     user: userPrompt,
   });
 
-  if (!result || !result.tailored_resume) throw new Error("bad_ai_output");
+  if (!result || !Array.isArray(result.tailored)) throw new Error("bad_ai_output");
 
   const created_at = new Date().toISOString();
   const record = {
     created_at,
     job_description: jobDescription,
-    tailored_resume: result.tailored_resume,
+    tailored: result.tailored,
     gap_questions: Array.isArray(result.gap_questions) ? result.gap_questions : [],
   };
   try {

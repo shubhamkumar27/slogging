@@ -1,6 +1,6 @@
 import { api, getPasscode, setPasscode, clearPasscode } from "./api.js";
 import { route, go, start } from "./router.js";
-import { extractPdfText } from "./pdf.js";
+import { parseDocx, spliceDocx } from "./docx.js";
 
 const app = document.getElementById("app");
 const html = (s, ...v) => s.reduce((a, x, i) => a + x + (v[i] ?? ""), "");
@@ -8,6 +8,8 @@ const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt
 
 let lastResult = null;
 let baseCache = null;
+let templateBytesB64 = null;
+let pendingParagraphs = null;
 
 function renderLogin(err = "") {
   app.innerHTML = html`
@@ -37,6 +39,9 @@ async function renderHome() {
   const { base } = await api.getBase();
   if (!base) { go("/onboarding"); return; }
   baseCache = base;
+  if (!templateBytesB64) {
+    try { const { docx_b64 } = await api.getTemplate(); templateBytesB64 = docx_b64; } catch {}
+  }
   app.innerHTML = html`
     <h1>snaggr</h1>
     <p>Hi ${esc(base.contact?.name || "")}. Paste a job description.</p>
@@ -64,31 +69,16 @@ async function renderHome() {
   });
 }
 
-function renderResume(r) {
-  const exp = (r.experience || []).map((e) => html`
-    <div style="margin-bottom:0.75rem">
-      <strong>${esc(e.title || "")}</strong> — ${esc(e.company || "")}
-      <div style="color:#666;font-size:0.9rem">${esc(e.start || "")} – ${esc(e.end || "")}</div>
-      <ul>${(e.bullets || []).map((b) => `<li>${esc(b)}</li>`).join("")}</ul>
-    </div>
-  `).join("");
-  const edu = (r.education || []).map((e) => html`
-    <div><strong>${esc(e.degree || "")}</strong> — ${esc(e.school || "")} <span style="color:#666">${esc(e.start || "")} – ${esc(e.end || "")}</span></div>
-  `).join("");
-  return html`
-    <h2>${esc(r.contact?.name || "")}</h2>
-    <p>${esc(r.contact?.email || "")} • ${esc(r.contact?.phone || "")} • ${esc(r.contact?.location || "")}</p>
-    <h3>Summary</h3><p>${esc(r.summary || "")}</p>
-    <h3>Experience</h3>${exp}
-    <h3>Education</h3>${edu}
-    <h3>Skills</h3><p>${(r.skills || []).map(esc).join(", ")}</p>
-  `;
-}
-
 async function renderResult() {
   if (!await ensureAuthed()) return;
   if (!lastResult) return go("/");
-  const { tailored_resume, gap_questions } = lastResult;
+  const { tailored, gap_questions } = lastResult;
+  const cards = (tailored || []).map((t) => html`
+    <div class="card" data-pid="${t.paragraph_id}" style="background:#fff;padding:0.75rem;border-radius:6px;border:1px solid #ddd;margin-bottom:0.5rem">
+      <div style="font-size:0.75rem;color:#888;margin-bottom:0.25rem">paragraph ${t.paragraph_id}</div>
+      <div class="card-text" contenteditable="true" spellcheck="true">${esc(t.text || "")}</div>
+    </div>
+  `).join("");
   app.innerHTML = html`
     <h1>Tailored Resume</h1>
     <a href="#/">← Back</a>
@@ -98,35 +88,39 @@ async function renderResult() {
         <ul>${gap_questions.map((q) => `<li>${esc(q)}</li>`).join("")}</ul>
       </div>
     ` : ""}
-    <div id="preview" contenteditable="true" spellcheck="true" style="background:#fff;padding:1rem;border-radius:8px;border:1px solid #ddd">
-      ${renderResume(tailored_resume)}
-    </div>
+    <div id="cards" style="margin-top:0.75rem">${cards}</div>
     <div class="row" style="margin-top:0.75rem">
-      <button id="dlpdf">Download PDF</button>
+      <button id="dldocx">Download Word</button>
     </div>
+    <div id="status"></div>
   `;
-  document.getElementById("dlpdf").addEventListener("click", () => {
-    const name = (lastResult.tailored_resume?.contact?.name || "resume").replace(/\s+/g, "_");
-    const previewHTML = document.getElementById("preview").innerHTML;
-    const w = window.open("", "_blank");
-    if (!w) { alert("Pop-up blocked. Allow pop-ups for this site to download the PDF."); return; }
-    w.document.write(`<!doctype html><html><head><title>${name}_tailored</title>
-      <meta charset="utf-8">
-      <style>
-        @page { size: A4; margin: 14mm; }
-        body { font-family: -apple-system, system-ui, sans-serif; color: #1a1a1a; line-height: 1.45; max-width: 720px; margin: 0 auto; padding: 14mm; }
-        h2 { margin: 0 0 0.25rem; font-size: 1.6rem; }
-        h3 { margin: 1.1rem 0 0.4rem; font-size: 1.05rem; border-bottom: 1px solid #ddd; padding-bottom: 0.2rem; }
-        p { margin: 0.25rem 0; }
-        ul { margin: 0.3rem 0 0.5rem 1.2rem; padding: 0; }
-        li { margin: 0.15rem 0; }
-        strong { font-weight: 600; }
-        @media print { body { padding: 0; max-width: none; } }
-      </style></head>
-      <body>${previewHTML}
-      <script>window.onload = () => { window.focus(); window.print(); };</script>
-      </body></html>`);
-    w.document.close();
+  document.getElementById("dldocx").addEventListener("click", async () => {
+    const status = document.getElementById("status");
+    const edits = Array.from(document.querySelectorAll("#cards .card")).map((el) => ({
+      id: Number(el.dataset.pid),
+      text: el.querySelector(".card-text").innerText.trim(),
+    }));
+    try {
+      if (!templateBytesB64) {
+        status.innerHTML = `<p>Loading template…</p>`;
+        const { docx_b64 } = await api.getTemplate();
+        templateBytesB64 = docx_b64;
+      }
+      status.innerHTML = `<p>Building Word file…</p>`;
+      const blob = await spliceDocx(templateBytesB64, edits);
+      const name = (baseCache?.contact?.name || "resume").replace(/\s+/g, "_");
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${name}_tailored.docx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      status.innerHTML = `<p>Downloaded.</p>`;
+    } catch (err) {
+      status.innerHTML = `<p class="error">Failed: ${esc(err.message)}</p>`;
+    }
   });
 }
 
@@ -134,41 +128,44 @@ async function renderOnboarding() {
   if (!await ensureAuthed()) return;
   app.innerHTML = html`
     <h1>Set up your base resume</h1>
-    <p>Upload your resume PDF, or paste it as text. We'll structure it for you, and you'll be able to review and edit before saving.</p>
+    <p>Upload your Word (.docx) resume template. We'll preserve your formatting (photo, colors, layout) and only swap text content when tailoring.</p>
     <div class="row" style="margin-bottom:0.75rem">
       <label class="secondary" style="padding:0.6rem 1rem;border:1px solid #1a1a1a;border-radius:6px;cursor:pointer;background:#fff;color:#1a1a1a">
-        Upload PDF
-        <input type="file" id="pdf" accept="application/pdf" style="display:none">
+        Upload Word (.docx)
+        <input type="file" id="docx" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none">
       </label>
     </div>
-    <textarea id="raw" placeholder="…or paste resume text here"></textarea>
     <div class="row" style="margin-top:0.75rem">
-      <button id="parse">Parse</button>
+      <button id="parse" disabled>Parse</button>
     </div>
     <div id="status"></div>
   `;
 
-  document.getElementById("pdf").addEventListener("change", async (e) => {
+  document.getElementById("docx").addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const status = document.getElementById("status");
-    status.innerHTML = `<p>Reading PDF…</p>`;
+    status.innerHTML = `<p>Reading .docx…</p>`;
     try {
-      const text = await extractPdfText(file);
-      document.getElementById("raw").value = text;
-      status.innerHTML = `<p>Extracted ${text.length} characters. Review the text, then click Parse.</p>`;
+      const { bytes_b64, paragraphs } = await parseDocx(file);
+      templateBytesB64 = bytes_b64;
+      pendingParagraphs = paragraphs;
+      document.getElementById("parse").disabled = false;
+      status.innerHTML = `<p>Extracted ${paragraphs.length} paragraphs. Click Parse to structure them.</p>`;
     } catch (err) {
-      status.innerHTML = `<p class="error">Couldn't read that PDF: ${esc(err.message)}. Try pasting as text instead.</p>`;
+      status.innerHTML = `<p class="error">Couldn't read that .docx: ${esc(err.message)}.</p>`;
     }
   });
 
   document.getElementById("parse").addEventListener("click", async () => {
-    const raw = document.getElementById("raw").value.trim();
     const status = document.getElementById("status");
-    if (!raw) { status.innerHTML = `<p class="error">Upload a PDF or paste text first.</p>`; return; }
+    if (!templateBytesB64 || !pendingParagraphs) {
+      status.innerHTML = `<p class="error">Upload a .docx first.</p>`;
+      return;
+    }
     status.innerHTML = `<p>Parsing… this may take 10–30s.</p>`;
     try {
-      const { parsed } = await api.parseResume(raw);
+      const { parsed } = await api.uploadTemplate({ docx_b64: templateBytesB64, paragraphs: pendingParagraphs });
       baseCache = parsed;
       go("/base");
     } catch (e) {

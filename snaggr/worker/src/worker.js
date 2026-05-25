@@ -2,7 +2,7 @@ import { resolveUser } from "./auth.js";
 import { getBase, putBase, deleteBase } from "./handlers/resume.js";
 import { generate } from "./handlers/generate.js";
 import { listHistory, getHistoryEntry } from "./handlers/history.js";
-import { parseResume } from "./handlers/parse.js";
+import { parseTemplate } from "./handlers/template.js";
 
 const ALLOWED_ORIGINS = new Set([
   "https://shubhamkumar27.github.io",
@@ -104,19 +104,31 @@ export default {
       return json(entry, 200, origin);
     }
 
-    if (url.pathname === "/resume/parse" && request.method === "POST") {
+    if (url.pathname === "/template/upload" && request.method === "POST") {
       const user = authed(request, env);
       if (!user) return json({ error: "unauthorized" }, 401, origin);
       let body;
       try { body = await request.json(); } catch { return json({ error: "bad_json" }, 400, origin); }
-      const raw = (body?.raw_text || "").trim();
-      if (!raw) return json({ error: "missing_text" }, 400, origin);
+      const docx_b64 = body?.docx_b64;
+      const paragraphs = body?.paragraphs;
+      if (!docx_b64 || !Array.isArray(paragraphs)) return json({ error: "bad_body" }, 400, origin);
       try {
-        const parsed = await parseResume(env, raw);
+        const parsed = await parseTemplate(env, paragraphs);
+        await env.SNAGGR_KV.put(`users/${user}/template`, docx_b64);
+        await env.SNAGGR_KV.put(`users/${user}/paragraphs`, JSON.stringify(paragraphs));
+        await env.SNAGGR_KV.put(`users/${user}/base`, JSON.stringify(parsed));
         return json({ parsed }, 200, origin);
       } catch (e) {
         return json({ error: String(e.message || e) }, 502, origin);
       }
+    }
+
+    if (url.pathname === "/template" && request.method === "GET") {
+      const user = authed(request, env);
+      if (!user) return json({ error: "unauthorized" }, 401, origin);
+      const docx_b64 = await env.SNAGGR_KV.get(`users/${user}/template`);
+      if (!docx_b64) return json({ error: "not_found" }, 404, origin);
+      return json({ docx_b64 }, 200, origin);
     }
 
     return json({ error: "not_found" }, 404, origin);

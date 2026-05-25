@@ -35,12 +35,14 @@ describe("generate", () => {
     const base = { summary: "old", experience: [] };
     const env = fakeEnv(base);
     mockMinimaxOk({
-      tailored_resume: { summary: "new", experience: [] },
+      tailored: [{ paragraph_id: 0, text: "new" }],
       gap_questions: ["Do you have X?"],
     });
 
     const out = await generate(env, "u", "JD text");
-    expect(out.tailored_resume.summary).toBe("new");
+    expect(out.tailored).toHaveLength(1);
+    expect(out.tailored[0].text).toBe("new");
+    expect(out.tailored[0].paragraph_id).toBe(0);
     expect(out.gap_questions).toEqual(["Do you have X?"]);
     expect(out.job_description).toBe("JD text");
     expect(out.created_at).toMatch(/T/);
