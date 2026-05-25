@@ -154,6 +154,11 @@ async function renderResult() {
             break-after: page;
           }
           section.docx:last-child { page-break-after: auto; break-after: auto; }
+          /* Don't split a single paragraph / list item across pages. */
+          section.docx p, section.docx li, section.docx tr {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
           @media print {
             html, body, .docx-wrapper { background: #fff !important; }
             .docx-wrapper { padding: 0 !important; box-shadow: none !important; }
