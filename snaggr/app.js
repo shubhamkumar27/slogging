@@ -143,13 +143,31 @@ async function renderResult() {
         <style>
           html, body { margin: 0; padding: 0; background: #fff; }
           @page { size: A4; margin: 0; }
-          /* docx-preview wraps pages in <section class="docx">. Force one section per printed page. */
-          .docx-wrapper { background: #fff !important; padding: 0 !important; }
-          .docx-wrapper > section.docx { box-shadow: none !important; margin: 0 !important; page-break-after: always; break-after: page; }
-          .docx-wrapper > section.docx:last-child { page-break-after: auto; break-after: auto; }
+          /* docx-preview creates <section class="docx"> inside .docx-wrapper.
+             It sets inline width/minHeight to A4 dimensions. Force one printed page per section. */
+          .docx-wrapper { background: #fff !important; padding: 0 !important; box-shadow: none !important; }
+          section.docx {
+            box-shadow: none !important;
+            margin: 0 auto !important;
+            background: #fff !important;
+            page-break-after: always;
+            break-after: page;
+            overflow: hidden;
+          }
+          section.docx:last-child { page-break-after: auto; break-after: auto; }
           @media print {
-            .docx-wrapper { padding: 0 !important; }
-            .docx-wrapper > section.docx { box-shadow: none !important; margin: 0 !important; }
+            html, body, .docx-wrapper { background: #fff !important; }
+            .docx-wrapper { padding: 0 !important; box-shadow: none !important; }
+            section.docx {
+              box-shadow: none !important;
+              margin: 0 !important;
+              page-break-after: always;
+              break-after: page;
+              /* Let docx-preview's inline width/minHeight (matched to A4) own sizing. */
+            }
+            section.docx:last-child { page-break-after: auto; break-after: auto; }
+            /* Hide anything outside the docx-wrapper (e.g. accidental Safari toolbars). */
+            body > *:not(#container) { display: none !important; }
           }
         </style>
       </head><body>
