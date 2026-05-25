@@ -141,8 +141,16 @@ async function renderResult() {
         <meta charset="utf-8">
         <title>${name}_tailored</title>
         <style>
-          body { margin: 0; }
+          html, body { margin: 0; padding: 0; background: #fff; }
           @page { size: A4; margin: 0; }
+          /* docx-preview wraps pages in <section class="docx">. Force one section per printed page. */
+          .docx-wrapper { background: #fff !important; padding: 0 !important; }
+          .docx-wrapper > section.docx { box-shadow: none !important; margin: 0 !important; page-break-after: always; break-after: page; }
+          .docx-wrapper > section.docx:last-child { page-break-after: auto; break-after: auto; }
+          @media print {
+            .docx-wrapper { padding: 0 !important; }
+            .docx-wrapper > section.docx { box-shadow: none !important; margin: 0 !important; }
+          }
         </style>
       </head><body>
         <div id="container"></div>
